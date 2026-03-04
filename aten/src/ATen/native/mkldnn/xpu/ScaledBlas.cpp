@@ -142,17 +142,37 @@ Tensor& _scaled_gemm(
   }
   // TODO: scale_result and alpha is not defined or used!
   std::optional<Tensor> scaled_result = std::nullopt;
-  at::native::onednn::scaled_matmul(
-      mat1,
-      mat2,
-      out,
-      scale_a,
-      scale_b,
-      scaling_choice_a,
-      scaling_choice_b,
-      bias,
-      scaled_result,
-      false /* use_fast_accum */);
+
+  // Workaround: oneDNN produces incorrect results when both inputs and output
+  // are fp8 with scales applied. Compute into a bf16 intermediate buffer first,
+  // then cast to the fp8 output.
+  if (at::isFloat8Type(out.scalar_type())) {
+    Tensor tmp = at::empty(out.sizes(), out.options().dtype(kBFloat16));
+    at::native::onednn::scaled_matmul(
+        mat1,
+        mat2,
+        tmp,
+        scale_a,
+        scale_b,
+        scaling_choice_a,
+        scaling_choice_b,
+        bias,
+        scaled_result,
+        false /* use_fast_accum */);
+    out.copy_(tmp);
+  } else {
+    at::native::onednn::scaled_matmul(
+        mat1,
+        mat2,
+        out,
+        scale_a,
+        scale_b,
+        scaling_choice_a,
+        scaling_choice_b,
+        bias,
+        scaled_result,
+        false /* use_fast_accum */);
+  }
 
   return out;
 }
