@@ -35,6 +35,7 @@ from torch.testing._internal.common_device_type import (
     onlyCPU,
     onlyCUDA,
     onlyNativeDeviceTypes,
+    onlyXPU,
     precisionOverride,
     skipCPUIfNoMkldnn,
     skipCUDAIfMiopen,
@@ -2367,7 +2368,7 @@ class TestConvolutionNNDeviceType(NNTestCase):
         self.assertEqual(output.shape, output_size)
 
     @skipMeta
-    @skipXPU  # Refer https://github.com/intel/torch-xpu-ops/issues/2594
+    # @skipXPU  # Refer https://github.com/intel/torch-xpu-ops/issues/2594
     @parametrize_test(
         "input_shape,transposed,dilated,groups,layout,backend_expected",
         [
@@ -2381,7 +2382,7 @@ class TestConvolutionNNDeviceType(NNTestCase):
                     torch.strided,
                     torch._C._ConvBackend.Slow2d,
                 ),
-                decorators=[onlyNativeDeviceTypes, disableMkldnn, disablecuDNN],
+                decorators=[onlyNativeDeviceTypes, disableMkldnn, disablecuDNN, skipXPU],
                 name="slow1d",
             ),
             subtest(
@@ -2393,7 +2394,7 @@ class TestConvolutionNNDeviceType(NNTestCase):
                     torch.strided,
                     torch._C._ConvBackend.SlowTranspose2d,
                 ),
-                decorators=[onlyNativeDeviceTypes, disableMkldnn, disablecuDNN],
+                decorators=[onlyNativeDeviceTypes, disableMkldnn, disablecuDNN, skipXPU],
                 name="slow1d_transposed",
             ),
             subtest(
@@ -2405,7 +2406,7 @@ class TestConvolutionNNDeviceType(NNTestCase):
                     torch.strided,
                     torch._C._ConvBackend.SlowDilated2d,
                 ),
-                decorators=[onlyNativeDeviceTypes, disableMkldnn, disablecuDNN],
+                decorators=[onlyNativeDeviceTypes, disableMkldnn, disablecuDNN, skipXPU],
                 name="slow1d_dilated",
             ),
             subtest(
@@ -2417,7 +2418,7 @@ class TestConvolutionNNDeviceType(NNTestCase):
                     torch.strided,
                     torch._C._ConvBackend.SlowTranspose2d,
                 ),
-                decorators=[onlyNativeDeviceTypes, disableMkldnn, disablecuDNN],
+                decorators=[onlyNativeDeviceTypes, disableMkldnn, disablecuDNN, skipXPU],
                 name="slow1d_dilated_transposed",
             ),
             subtest(
@@ -2429,7 +2430,7 @@ class TestConvolutionNNDeviceType(NNTestCase):
                     torch.strided,
                     torch._C._ConvBackend.Slow2d,
                 ),
-                decorators=[onlyNativeDeviceTypes, disableMkldnn, disablecuDNN],
+                decorators=[onlyNativeDeviceTypes, disableMkldnn, disablecuDNN, skipXPU],
                 name="slow2d",
             ),
             subtest(
@@ -2441,7 +2442,7 @@ class TestConvolutionNNDeviceType(NNTestCase):
                     torch.strided,
                     torch._C._ConvBackend.SlowTranspose2d,
                 ),
-                decorators=[onlyNativeDeviceTypes, disableMkldnn, disablecuDNN],
+                decorators=[onlyNativeDeviceTypes, disableMkldnn, disablecuDNN, skipXPU],
                 name="slow2d_transposed",
             ),
             subtest(
@@ -2453,7 +2454,7 @@ class TestConvolutionNNDeviceType(NNTestCase):
                     torch.strided,
                     torch._C._ConvBackend.SlowDilated2d,
                 ),
-                decorators=[onlyNativeDeviceTypes, disableMkldnn, disablecuDNN],
+                decorators=[onlyNativeDeviceTypes, disableMkldnn, disablecuDNN, skipXPU],
                 name="slow2d_dilated",
             ),
             subtest(
@@ -2465,7 +2466,7 @@ class TestConvolutionNNDeviceType(NNTestCase):
                     torch.strided,
                     torch._C._ConvBackend.SlowTranspose2d,
                 ),
-                decorators=[onlyNativeDeviceTypes, disableMkldnn, disablecuDNN],
+                decorators=[onlyNativeDeviceTypes, disableMkldnn, disablecuDNN, skipXPU],
                 name="slow2d_dilated_transposed",
             ),
             subtest(
@@ -2505,12 +2506,86 @@ class TestConvolutionNNDeviceType(NNTestCase):
                     torch.strided,
                     torch._C._ConvBackend.SlowDilated3d,
                 ),
-                decorators=[onlyNativeDeviceTypes, disableMkldnn, disablecuDNN],
+                decorators=[onlyNativeDeviceTypes, disableMkldnn, disablecuDNN, skipXPU],
                 name="slow3d_dilated",
             ),
             # FIXME: RuntimeError: CUDA out of memory.
             # subtest(((2, 6, 7, 8, 9), True, True, 3, torch.strided, torch._C._ConvBackend.SlowTranspose3d),
             #         decorators=[onlyNativeDeviceTypes, disableMkldnn, disablecuDNN], name='slow3d_dilated_transposed'),
+            # === xpu ===
+            # XPU uses the Overrideable backend (oneDNN) for all convolutions.
+            subtest(
+                (
+                    (2, 6, 7),
+                    False,
+                    False,
+                    3,
+                    torch.strided,
+                    torch._C._ConvBackend.Overrideable,
+                ),
+                decorators=[onlyXPU],
+                name="xpu_override1d",
+            ),
+            subtest(
+                (
+                    (2, 6, 7),
+                    True,
+                    False,
+                    3,
+                    torch.strided,
+                    torch._C._ConvBackend.Overrideable,
+                ),
+                decorators=[onlyXPU],
+                name="xpu_override1d_transposed",
+            ),
+            subtest(
+                (
+                    (2, 6, 7, 8),
+                    False,
+                    False,
+                    3,
+                    torch.strided,
+                    torch._C._ConvBackend.Overrideable,
+                ),
+                decorators=[onlyXPU],
+                name="xpu_override2d",
+            ),
+            subtest(
+                (
+                    (2, 6, 7, 8),
+                    True,
+                    False,
+                    3,
+                    torch.strided,
+                    torch._C._ConvBackend.Overrideable,
+                ),
+                decorators=[onlyXPU],
+                name="xpu_override2d_transposed",
+            ),
+            subtest(
+                (
+                    (2, 6, 7, 8, 9),
+                    False,
+                    False,
+                    3,
+                    torch.strided,
+                    torch._C._ConvBackend.Overrideable,
+                ),
+                decorators=[onlyXPU],
+                name="xpu_override3d",
+            ),
+            subtest(
+                (
+                    (2, 6, 7, 8, 9),
+                    False,
+                    True,
+                    3,
+                    torch.strided,
+                    torch._C._ConvBackend.Overrideable,
+                ),
+                decorators=[onlyXPU],
+                name="xpu_override3d_dilated",
+            ),
             subtest(
                 (
                     (0, 6, 7),
@@ -3186,6 +3261,9 @@ class TestConvolutionNNDeviceType(NNTestCase):
         gradcheck_nondet_tol = 0.0
         if torch.backends.cudnn.is_available():
             # cuDNN introduces non-determinism
+            gradcheck_nondet_tol = GRADCHECK_NONDET_TOL
+        if self.device_type == "xpu":
+            # oneDNN introduces non-determinism
             gradcheck_nondet_tol = GRADCHECK_NONDET_TOL
 
         self.assertTrue(gradcheck(convolution, inputs, nondet_tol=gradcheck_nondet_tol))
