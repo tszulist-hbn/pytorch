@@ -19,7 +19,13 @@ def register_rng_decomposition(aten_op):
     return decomp.register_decomposition(aten_op, rng_decompositions)
 
 
-def throw_on_non_cuda(device):
+# Backends that expose a Philox/counter-based RNG with the same
+# (initial_seed, _get_rng_state_offset, _set_rng_state_offset, set_rng_state)
+# API as torch.cuda. Keep this in sync with torch._prims.rng_prims.
+PHILOX_BACKENDS = ("cuda", "xpu")
+
+
+def throw_on_non_philox_device(device):
     raise RuntimeError(
         f"You are trying to functionalize a {device.type} RNG operator but {device.type} does not "
         f"use Philox/counter-based RNG. Therefore, functionalizing a {device.type} RNG operator is "
@@ -27,12 +33,16 @@ def throw_on_non_cuda(device):
     )
 
 
+# Back-compat alias for external callers that imported the old name.
+throw_on_non_cuda = throw_on_non_philox_device
+
+
 # TODO - We have to register many more distributions here, and also higher level
 # ops like dropout which have fused implementation and can hide the rand inside.
 @register_rng_decomposition(aten.rand)
 def rand(shape, dtype=None, layout=torch.strided, device=None, pin_memory=False):
-    if device and device.type != "cuda":
-        throw_on_non_cuda(device)
+    if device and device.type not in PHILOX_BACKENDS:
+        throw_on_non_philox_device(device)
     seed, offset = PhiloxStateTracker.get_state_as_tuple()
     dtype = dtype or torch.float32
     out, offset_jump = torch.ops.rngprims.philox_rand(
@@ -52,8 +62,8 @@ def rand_like(
     memory_format=torch.preserve_format,
 ):
     device = device or x.device
-    if device.type != "cuda":
-        throw_on_non_cuda(device)
+    if device.type not in PHILOX_BACKENDS:
+        throw_on_non_philox_device(device)
     dtype = dtype or x.dtype
     seed, offset = PhiloxStateTracker.get_state_as_tuple()
     out, offset_jump = torch.ops.rngprims.philox_rand(
