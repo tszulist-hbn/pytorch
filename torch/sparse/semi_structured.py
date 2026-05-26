@@ -30,6 +30,7 @@ __all__ = [
     "SparseSemiStructuredTensor",
     "SparseSemiStructuredTensorCUTLASS",
     "SparseSemiStructuredTensorCUSPARSELT",
+    "SparseSemiStructuredTensorXPU",
     "to_sparse_semi_structured",
 ]
 
@@ -703,6 +704,124 @@ class SparseSemiStructuredTensorCUSPARSELT(SparseSemiStructuredTensor):
                 self.alg_id_cusparselt,
                 should_transpose_dense,
             )
+
+
+class SparseSemiStructuredTensorXPU(SparseSemiStructuredTensor):
+    """
+    This class implements semi-structured sparsity for the XPU backend.
+
+    The XPU backend currently uses a CPU fallback for the dense-to-sparse conversion,
+    while supporting the same metadata layout as CUTLASS for compatibility.
+    The sparse tensor and metadata are stored separately in packed and meta tensors.
+
+    When converted, tensors are moved to CPU, converted using CUTLASS conversion routines,
+    and then moved back to the XPU device.
+    """
+
+    BACKEND = "xpu"
+    _DTYPE_SHAPE_CONSTRAINTS = {
+        torch.int8: _SEMI_STRUCTURED_SPARSE_CONFIG(16, 128, 16, 16),
+        torch.float16: _SEMI_STRUCTURED_SPARSE_CONFIG(32, 64, 8, 8),
+        torch.bfloat16: _SEMI_STRUCTURED_SPARSE_CONFIG(32, 64, 8, 8),
+        torch.float32: _SEMI_STRUCTURED_SPARSE_CONFIG(32, 32, 4, 4),
+    }
+
+    @classmethod
+    def _validate_device_dim_dtype_shape(cls, original_tensor: torch.Tensor) -> None:
+        """
+        Assert that the given tensor is valid for semi-structured sparse compression on XPU.
+        """
+        # check device - XPU only
+        if not original_tensor.is_xpu:
+            raise RuntimeError(
+                f"Error original_tensor.device= {original_tensor.device} is not supported! "
+                "Only XPU tensors are currently supported for XPU backend."
+            )
+
+        # check dim
+        if original_tensor.dim() != 2:
+            raise RuntimeError(
+                f"Error original_tensor.dim = {original_tensor.dim()} is not supported! "
+                "Only 2d tensors are currently supported."
+            )
+
+        # check contiguous
+        if not original_tensor.is_contiguous():
+            raise RuntimeError(
+                "Error original_tensor is not contiguous! "
+                "Only contiguous tensors are currently supported."
+            )
+
+        # check dtype
+        if original_tensor.dtype not in cls._DTYPE_SHAPE_CONSTRAINTS:
+            raise RuntimeError(
+                f"Error original_tensor.dtype {original_tensor.dtype} is not a supported dtype for {cls}!"
+            )
+
+        # check shape
+        m, n = original_tensor.shape
+        min_rows = cls._DTYPE_SHAPE_CONSTRAINTS[original_tensor.dtype].sparse_min_rows
+        min_cols = cls._DTYPE_SHAPE_CONSTRAINTS[original_tensor.dtype].sparse_min_cols
+        if m < min_rows or m % min_rows or n < min_cols or n % min_cols:
+            raise RuntimeError(
+                f"Error original_tensor.shape {original_tensor.shape} is not supported! "
+                f"Both dimensions must be larger or equal than and a multiple of ({min_rows}, {min_cols})"
+            )
+
+    @classmethod
+    def from_dense(
+        cls,
+        original_tensor: torch.Tensor,
+        alg_id: int = SparseSemiStructuredTensor._DEFAULT_ALG_ID,
+    ) -> "SparseSemiStructuredTensorXPU":
+        cls._validate_device_dim_dtype_shape(original_tensor)
+
+        # CPU fallback conversion: move to CPU, convert, move back to XPU device
+        original_device = original_tensor.device
+        original_tensor_cpu = original_tensor.cpu()
+        (
+            sparse_tensor_cpu,
+            meta_tensor_cpu,
+        ) = sparse_semi_structured_from_dense_cutlass(original_tensor_cpu)
+
+        # Move results back to original XPU device
+        sparse_tensor_xpu = sparse_tensor_cpu.to(original_device)
+        meta_tensor_xpu = meta_tensor_cpu.to(original_device)
+
+        return cls(
+            original_tensor.shape,
+            packed=sparse_tensor_xpu,
+            meta=meta_tensor_xpu,
+            packed_t=None,
+            meta_t=None,
+            compressed_swizzled_bitmask=None,
+            requires_grad=original_tensor.requires_grad,
+        )
+
+    def to_dense(self):  # type: ignore[override]
+        if self.meta is None or self.packed is None:
+            raise AssertionError("meta and packed must not be None")
+        return (
+            sparse_semi_structured_to_dense_cutlass(
+                self.packed,
+                self.meta,
+            )
+            if self.meta.ndim == 2
+            else super().to_dense()
+        )
+
+    def _mm(
+        self,
+        B: torch.Tensor,
+        *,
+        bias: torch.Tensor | None = None,
+        should_transpose_dense: bool = False,
+        **kwargs,
+    ) -> torch.Tensor:
+        raise NotImplementedError(
+            f"`{self.__class__.__name__}` matmul: XPU sparse matmul is not yet implemented. "
+            "Only dense-to-sparse conversion is supported."
+        )
 
 
 _cutlass_mm_registered = False

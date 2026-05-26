@@ -12,6 +12,7 @@ from .semi_structured import (
     SparseSemiStructuredTensor,
     SparseSemiStructuredTensorCUSPARSELT,
     SparseSemiStructuredTensorCUTLASS,
+    SparseSemiStructuredTensorXPU,
     to_sparse_semi_structured,
 )
 
@@ -38,6 +39,7 @@ __all__ = [
     "SparseSemiStructuredTensor",
     "SparseSemiStructuredTensorCUTLASS",
     "SparseSemiStructuredTensorCUSPARSELT",
+    "SparseSemiStructuredTensorXPU",
     "to_sparse_semi_structured",
     "as_sparse_gradcheck",
 ]

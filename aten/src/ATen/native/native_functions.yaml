@@ -7865,7 +7865,7 @@
 - func: _to_sparse_semi_structured(Tensor dense) -> (Tensor, Tensor)
   variants: function
   dispatch:
-    CUDA: _to_sparse_semi_structured
+    CPU, CUDA: _to_sparse_semi_structured
 
 - func: to_mkldnn(Tensor self, ScalarType? dtype=None) -> Tensor
   variants: method
