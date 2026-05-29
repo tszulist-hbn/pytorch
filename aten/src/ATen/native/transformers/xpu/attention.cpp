@@ -106,22 +106,34 @@ _flash_attention_forward_xpu(
 
   if (cum_seq_q.has_value() && cum_seq_k.has_value()) {
     // Varlen (packed/nested tensor) path
-    // Ensure inputs are contiguous in the last dimension for SYCLTLA backend
-    const auto& query_c = query.stride(-1) == 1 ? query : query.contiguous();
-    const auto& key_c = key.stride(-1) == 1 ? key : key.contiguous();
-    const auto& value_c = value.stride(-1) == 1 ? value : value.contiguous();
+    // Ensure inputs are fully contiguous for SYCLTLA backend
+    const auto& query_c = query.is_contiguous() ? query : query.contiguous();
+    const auto& key_c = key.is_contiguous() ? key : key.contiguous();
+    const auto& value_c = value.is_contiguous() ? value : value.contiguous();
 
-    auto [output, logsumexp] = sycltla::flash_attention_forward_varlen(
-        query_c,
-        key_c,
-        value_c,
-        cum_seq_q.value(),
-        cum_seq_k.value(),
-        max_q,
-        max_k,
-        dropout_p,
-        is_causal,
-        scale_val);
+    auto [output, logsumexp, philox_seed, philox_offset, debug_attn_mask] =
+        sycltla::_flash_attention_forward(
+            query_c,
+            key_c,
+            value_c,
+            cum_seq_q,
+            cum_seq_k,
+            max_q,
+            max_k,
+            dropout_p,
+            is_causal,
+            return_debug_mask,
+            scale_val,
+            window_size_left,
+            window_size_right,
+            seqused_k,
+            alibi_slopes,
+            block_table,
+            std::nullopt,
+            num_splits);
+    static_cast<void>(philox_seed);
+    static_cast<void>(philox_offset);
+    static_cast<void>(debug_attn_mask);
     // RNG state for dropout replay: not implemented yet, return empty tensor
     at::Tensor rng_state = at::empty({}, at::dtype(at::kLong).device(query.device()));
     return std::make_tuple(
